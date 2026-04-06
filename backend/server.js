@@ -79,7 +79,11 @@ const startServer = async () => {
   // });
 };
 
-await startServer();
+startServer();
 
+server.listen(PORT, () => {
+  console.log(`🚀 IntellMeet server running on http://localhost:${PORT}`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV}`);
+});
 
-module.exports = server
+module.exports = server;
