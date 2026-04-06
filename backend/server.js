@@ -73,10 +73,13 @@ const startServer = async () => {
     console.warn('⚠️ Redis connection failed, continuing without Redis:', redisError.message);
   }
   
-  server.listen(PORT, () => {
-    console.log(`🚀 IntellMeet server running on http://localhost:${PORT}`);
-    console.log(`🌍 Environment: ${process.env.NODE_ENV}`);
-  });
+  // server.listen(PORT, () => {
+  //   console.log(`🚀 IntellMeet server running on http://localhost:${PORT}`);
+  //   console.log(`🌍 Environment: ${process.env.NODE_ENV}`);
+  // });
 };
 
-startServer();
+await startServer();
+
+
+module.exports = server
