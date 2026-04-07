@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const User = require("../models/User");
 const { generateTokens } = require("../utils/jwt");
 
 // Mock users for development (no DB needed)
@@ -27,31 +28,44 @@ const register = async (req, res) => {
     const existing = mockUsers.find(u => u.email === email);
     if (existing) return res.status(400).json({ message: "Email already registered" });
 
-    // Create mock user
-    const userId = `mock-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    // Create mock user + REAL DB user
     const hashedPassword = await bcrypt.hash(password, 12);
-    const newUser = {
-      _id: userId,
+    
+    // Create DB user first
+    const dbUser = await User.create({
       name,
       email,
       password: hashedPassword,
       role: "member",
       avatar: "",
+      isOnline: true
+    });
+    
+    // Sync mock
+    const userId = dbUser._id.toString();
+    const newUser = {
+      _id: userId,
+      name: dbUser.name,
+      email: dbUser.email,
+      password: hashedPassword,
+      role: dbUser.role,
+      avatar: dbUser.avatar,
       refreshToken: "",
       isOnline: true
     };
-
     mockUsers.push(newUser);
-    console.log('✅ Mock user created:', userId);
-
+    
+    console.log('✅ DB+Mock user created:', userId);
+    
     const { accessToken, refreshToken } = generateTokens(userId);
     newUser.refreshToken = refreshToken;
+    await dbUser.updateOne({ refreshToken });
 
     res.status(201).json({
       success: true,
       accessToken,
       refreshToken,
-      user: { id: userId, name: newUser.name, email: newUser.email, role: newUser.role, avatar: newUser.avatar },
+      user: { id: userId, name: dbUser.name, email: dbUser.email, role: dbUser.role, avatar: dbUser.avatar },
     });
   } catch (err) {
     console.error('❌ REGISTER ERROR:', err);
@@ -63,21 +77,54 @@ const login = async (req, res) => {
   try {
     console.log('🔍 LOGIN:', req.body.email);
     const { email, password } = req.body;
-    const user = mockUsers.find(u => u.email === email);
-
-    if (!user || !(await bcrypt.compare(password, user.password)))
+    
+    // Check DB first
+    let dbUser = await User.findOne({ email }).select('+password');
+    let user;
+    
+    if (!dbUser) {
+      // Fallback to mock (backward compat)
+      user = mockUsers.find(u => u.email === email);
+      if (!user || !(await bcrypt.compare(password, user.password))) {
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
+      // Create DB user on first login
+      dbUser = await User.create({
+        name: user.name,
+        email,
+        password: user.password,
+        role: user.role,
+        avatar: user.avatar || "",
+        isOnline: true
+      });
+      user._id = dbUser._id.toString();
+    } else if (!(await dbUser.comparePassword(password))) {
       return res.status(401).json({ message: "Invalid email or password" });
-
-    const { accessToken, refreshToken } = generateTokens(user._id);
+    }
+    
+    user = mockUsers.find(u => u._id === dbUser._id.toString()) || {
+      _id: dbUser._id.toString(),
+      name: dbUser.name,
+      email: dbUser.email,
+      role: dbUser.role,
+      avatar: dbUser.avatar,
+      password: '', // not stored
+      refreshToken: '',
+      isOnline: true
+    };
+    
+    const { accessToken, refreshToken } = generateTokens(dbUser._id.toString());
     user.refreshToken = refreshToken;
     user.isOnline = true;
-    console.log('✅ Mock login success:', user._id);
-
+    await dbUser.updateOne({ refreshToken, isOnline: true });
+    
+    console.log('✅ DB+Mock login success:', dbUser._id);
+    
     res.json({
       success: true,
       accessToken,
       refreshToken,
-      user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar },
+      user: { id: dbUser._id.toString(), name: dbUser.name, email: dbUser.email, role: dbUser.role, avatar: dbUser.avatar },
     });
   } catch (err) {
     console.error('❌ LOGIN ERROR:', err);
@@ -107,8 +154,14 @@ const refresh = async (req, res) => {
 
 const getMe = async (req, res) => {
   const user = mockUsers.find(u => u._id === req.user.id);
-  if (!user) return res.status(404).json({ message: "User not found" });
-  res.json({ success: true, user });
+  if (user) {
+    res.json({ success: true, user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar } });
+    return;
+  }
+  // Fallback to DB
+  const dbUser = await User.findById(req.user.id).select('-password -refreshToken');
+  if (!dbUser) return res.status(404).json({ message: "User not found" });
+  res.json({ success: true, user: { id: dbUser._id, name: dbUser.name, email: dbUser.email, role: dbUser.role, avatar: dbUser.avatar } });
 };
 
 const logout = async (req, res) => {
@@ -117,6 +170,7 @@ const logout = async (req, res) => {
     user.refreshToken = "";
     user.isOnline = false;
   }
+  await User.findByIdAndUpdate(req.user.id, { refreshToken: "", isOnline: false });
   res.json({ success: true, message: "Logged out" });
 };
 

@@ -8,6 +8,7 @@ import Dashboard from "./pages/Dashboard";
 import MeetingRoom from "./pages/MeetingRoom";
 import MeetingSummary from "./pages/MeetingSummary";
 import Profile from "./pages/Profile";
+import Settings from "./pages/Settings";
 import Layout from "./components/Layout";
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -47,8 +48,10 @@ export default function App() {
         <Route path="/meeting/:code" element={<PrivateRoute><MeetingRoom /></PrivateRoute>} />
         <Route path="/summary/:id" element={<PrivateRoute><MeetingSummary /></PrivateRoute>} />
         <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
+        <Route path="/settings" element={<PrivateRoute><Settings /></PrivateRoute>} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </BrowserRouter>
   );
 }
+

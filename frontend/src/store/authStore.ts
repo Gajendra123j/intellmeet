@@ -48,21 +48,18 @@ export const useAuthStore = create<AuthState>((set) => ({
   checkAuth: async () => {
     try {
       const token = localStorage.getItem("accessToken");
-      if (!token) { set({ isLoading: false }); return; }
-      // Mock for frontend demo (no backend needed)
-      const mockUser = {
-        id: "demo1",
-        name: "Demo User", 
-        email: "demo@intellmeet.ai",
-        role: "host",
-        avatar: ""
-      };
-      localStorage.setItem("accessToken", "mock-token");
-      set({ user: mockUser, isAuthenticated: true, isLoading: false });
-      return;
-
-    } catch {
-      localStorage.clear();
+      if (!token) {
+        set({ isLoading: false });
+        return;
+      }
+      const { data } = await api.get("/auth/me");
+      set({ user: data.user, isAuthenticated: true, isLoading: false });
+    } catch (err: any) {
+      if (err.response?.status === 401) {
+        localStorage.clear();
+        window.location.href = "/login";
+        return;
+      }
       set({ user: null, isAuthenticated: false, isLoading: false });
     }
   },
